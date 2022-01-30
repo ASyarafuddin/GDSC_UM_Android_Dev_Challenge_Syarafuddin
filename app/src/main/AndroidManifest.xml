@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.helloworld">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.HelloWorld">
+        <activity
+            android:name=".NewDiaryActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"/>
+        <activity
+            android:name=".LoginActivity"
+            android:exported="true"> <!-- using package name, resolve to 'package'.LoginActivity -->
+            <intent-filter> <!-- setting berkaitan intent -->
+                <action android:name="android.intent.action.MAIN" /> <!-- accept and handle Intent object -->
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!--
+            When an app issues an intent to the system,
+            system locates an app component that can handle the intent based on intent filter
+            -->
+        </activity>
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"> <!-- pasal security/export to another app unnecessarily -->
+
+        </activity>
+
+    </application>
+
+</manifest>

@@ -1,0 +1,11 @@
+1. Should I ask user for name (to make it more personalized e.g. Hello 'user's name' when they login)
+- i think not necessary, because for me the nature of writing diary is in anonymous and being secret
+- i'll go for calling 'User'
+
+2. i think something not right about the UI/UX to display the diaries
+- not suitable if got lengthy text
+
+3. adding Date for every entry
+- TextView
+- save Date info in firebase
+- display Date in DiaryAdapter
