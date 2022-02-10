@@ -91,8 +91,8 @@ public class NewDiaryActivity extends AppCompatActivity {
 
         firebaseAuth = FirebaseAuth.getInstance();
 
-        firebaseDatabase = FirebaseDatabase.getInstance(this.getFirebaseInstance());
-        databaseReference = firebaseDatabase.getReference(); //refers to idiary-1131a-default-rtdb in our firebase real-time database
+        firebaseDatabase = FirebaseDatabase.getInstance(getString(R.string.firebaseDb_instance));
+        databaseReference = firebaseDatabase.getReference();
         FirebaseUser firebaseUser = firebaseAuth.getCurrentUser();
 
         //add premission in manifest file as well
@@ -166,22 +166,6 @@ public class NewDiaryActivity extends AppCompatActivity {
 
             }
         });
-    }
-
-    private String getFirebaseInstance(){
-        String firebaseInstance = null;
-
-        try {
-            File myObj = new File("FirebaseDatabase instance.txt");
-            Scanner myReader = new Scanner(myObj);
-            firebaseInstance = myReader.nextLine();
-
-            myReader.close();
-        } catch (FileNotFoundException e) {
-            System.out.println("Error in reading txt file");
-        }
-
-        return firebaseInstance;
     }
 
     private boolean isTextDiary(String loc){
