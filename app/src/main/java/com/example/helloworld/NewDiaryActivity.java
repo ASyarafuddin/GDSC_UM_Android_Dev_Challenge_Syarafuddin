@@ -1,30 +1,32 @@
 package com.example.helloworld;
 
+import android.Manifest;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.util.Log;
+import android.view.View;
+import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import android.Manifest;
-import android.content.DialogInterface;
-import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.drawable.Drawable;
-import android.net.Uri;
-import android.os.Bundle;
-import android.util.Log;
-import android.view.MenuItem;
-import android.view.View;
-import android.widget.ImageView;
-import android.widget.Toast;
-
 import com.bumptech.glide.Glide;
-import com.bumptech.glide.RequestBuilder;
 import com.bumptech.glide.load.resource.bitmap.CenterCrop;
 import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions;
 import com.example.helloworld.ml.LiteModelOnDeviceVisionClassifierLandmarksClassifierAsiaV11;
@@ -41,6 +43,7 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
+
 import org.jetbrains.annotations.NotNull;
 import org.tensorflow.lite.DataType;
 import org.tensorflow.lite.support.common.ops.CastOp;
@@ -50,23 +53,29 @@ import org.tensorflow.lite.support.image.ops.ResizeOp;
 import org.tensorflow.lite.support.label.Category;
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Scanner;
 
 public class NewDiaryActivity extends AppCompatActivity {
+
+    private static final String TAG = "New Diary Activity";
 
     private ImageView diaryImage;
     private MaterialButton saveDiaryButton;
     private TextInputEditText diaryTitle,diaryNote,diaryLoc;
+    private TextView draftStatus;
     private Toolbar toolbar;
     private CircularProgressIndicator progressIndicator;
 
@@ -78,11 +87,17 @@ public class NewDiaryActivity extends AppCompatActivity {
     private static final int STORAGE_REQUEST_CODE = 200;
     private static final int IMAGE_PICK_GALLERY_CODE = 400;
 
-    // all inside AddDiary class
-    //firebase variables #session4
     private FirebaseDatabase firebaseDatabase;
     private FirebaseAuth firebaseAuth;
     private DatabaseReference databaseReference;
+
+    //thread token for handler
+    private String saveTitleDraftToken = "1";
+    private String deleteTitleDraftToken = "-1";
+    private String saveTextDraftToken = "2";
+    private String deleteTextDraftToken = "-2";
+    private String saveLocDraftToken = "3";
+    private String deleteLocDraftToken = "-3";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -92,80 +107,284 @@ public class NewDiaryActivity extends AppCompatActivity {
         firebaseAuth = FirebaseAuth.getInstance();
 
         firebaseDatabase = FirebaseDatabase.getInstance(getString(R.string.firebaseDb_instance));
-        databaseReference = firebaseDatabase.getReference();
+        databaseReference = firebaseDatabase.getReference(); //refers our firebase real-time database we key-in
         FirebaseUser firebaseUser = firebaseAuth.getCurrentUser();
 
-        //add premission in manifest file as well
+        //add permission in manifest file as well
         storagePermissions = new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE};
 
         //find views of AddDiary xml file
         progressIndicator = findViewById(R.id.add_diary_progress_bar);
         toolbar = findViewById(R.id.add_diary_toolbar);
-        toolbar.setNavigationOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(getApplicationContext(), MainActivity.class);
-                startActivity(intent);
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                finish();
-            }
-        });
         diaryImage = findViewById(R.id.diary_image);
         saveDiaryButton = findViewById(R.id.save_diary_button);
         diaryTitle = findViewById(R.id.diary_title);
-        diaryTitle.requestFocus(); // enable the focus indicator on edit text
-        diaryLoc = findViewById(R.id.diary_location);
         diaryNote = findViewById(R.id.diary_note);
-        saveDiaryButton = findViewById(R.id.save_diary_button);
-        toolbar.getMenu().getItem(0).setOnMenuItemClickListener(new MenuItem.OnMenuItemClickListener() {
+        diaryLoc = findViewById(R.id.diary_location);
+
+        String[] fileList = fileList();
+        for(int i = 0; i < fileList().length; i++){
+            Log.d(TAG, "File inside internal storage: " + fileList[i]);
+
+            if (fileList[i].equals("draftTitle")) diaryTitle.setText(getDraftFromFile("draftTitle"));
+            else if (fileList[i].equals("draftText")) diaryNote.setText(getDraftFromFile("draftText"));
+            else if (fileList[i].equals("draftImage")) {
+                File imgFile = new File(getFilesDir().getAbsolutePath() + "/draftImage");
+                uploadImageToApp(Uri.fromFile(imgFile));
+            }
+            else if (fileList[i].equals("draftLoc")) {
+                diaryLoc.setText(getDraftFromFile("draftLoc"));
+                diaryLoc.setVisibility(View.VISIBLE);
+            }
+        }
+
+        Handler saveDraftHandler = new Handler();
+
+        //instead of using focusChangeListener, i use TextChangedListener because user may change the text,
+        // and if the app is closed at that moment, it is not being saved]
+
+        diaryTitle.addTextChangedListener(new TextWatcher() {
             @Override
-            public boolean onMenuItemClick(MenuItem item) {
-                displayOptionBuilder();
-                return false;
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+
+            }
+
+            @RequiresApi(api = Build.VERSION_CODES.P)
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (!s.toString().equals("")){
+                    saveDraftHandler.removeCallbacksAndMessages(saveTitleDraftToken);
+                    saveDraftHandler.postDelayed(getThreadSavingDraft("draftTitle",s.toString()), saveTitleDraftToken, 1000);
+                }
+                else{
+                    saveDraftHandler.removeCallbacksAndMessages(deleteTitleDraftToken);
+                    saveDraftHandler.postDelayed(getThreadDeletingDraft("draftTitle"), deleteTitleDraftToken, 1000);
+                }
             }
         });
-        saveDiaryButton.setOnClickListener(new View.OnClickListener() {
+        diaryTitle.requestFocus(); // enable the focus indicator on edit text
+
+        diaryNote.addTextChangedListener(new TextWatcher() {
             @Override
-            public void onClick(View v) {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
 
-                //first need to get all user input in edit texts and if there is an image
-                String title = diaryTitle.getText().toString();
-                String note = diaryNote.getText().toString();
-                String loc = diaryLoc.getText().toString();
-                String date = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
-                // before saving to data base we need to check if any compulsory field are empty or not
-                // title and note are compulsory not to be empty for both of cases if user wants to save diary with image or without image.
-                if (!title.isEmpty() && !note.isEmpty()) {
-                    // now we check if the user wants to add image diary or textDiary
-                    if (isTextDiary(loc)) {
-                        // another case to be checked before saving data to database is to check that firebase user is not null
-                        if (firebaseUser != null) {
-                            // we need to disable the button from another click in case if user clicks the button 2 times so we dont save the same data again
-                            saveDiaryButton.setClickable(false);
-                            //enable progress bar
-                            progressIndicator.setVisibility(View.VISIBLE);
-                            progressIndicator.setProgressCompat(500, true);
-                            // we also pass userId to our method to save the diary which belongs to our firebaseUser
-                            saveTextDiaryToDatabase(title, note, date, firebaseUser.getUid());
-                        }
-                    } else if (isImageDiary(loc)) {
-                        if (firebaseUser != null) {
-                            // we need to disable the button from another click in case if user clicks the button 2 times so we dont save the same data again
-                            saveDiaryButton.setClickable(false);
-                            progressIndicator.setVisibility(View.VISIBLE);
-                            progressIndicator.setProgressCompat(300, true);
-                            saveImageDiaryToStorage(title, note, loc, date, selectedImage, firebaseUser.getUid());
-                        }
-                    } else {
-                        Toast.makeText(getApplicationContext(), "Please fill up all fields", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+
+            }
+
+            @RequiresApi(api = Build.VERSION_CODES.P)
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (!s.toString().equals("")){
+                    saveDraftHandler.removeCallbacksAndMessages(saveTextDraftToken);
+                    saveDraftHandler.postDelayed(getThreadSavingDraft("draftText",s.toString()), saveTextDraftToken, 1000);
+                }
+                else{
+                    saveDraftHandler.removeCallbacksAndMessages(deleteTextDraftToken);
+                    saveDraftHandler.postDelayed(getThreadDeletingDraft("draftText"), deleteTextDraftToken, 1000);
+                }
+            }
+        });
+
+        diaryLoc.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+
+            }
+
+            @RequiresApi(api = Build.VERSION_CODES.P)
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (!s.toString().equals("")){
+                    saveDraftHandler.removeCallbacksAndMessages(saveLocDraftToken);
+                    saveDraftHandler.postDelayed(getThreadSavingDraft("draftLoc",s.toString()), saveLocDraftToken, 1000);
+                }
+                else{
+                    saveDraftHandler.removeCallbacksAndMessages(deleteLocDraftToken);
+                    saveDraftHandler.postDelayed(getThreadDeletingDraft("draftLoc"), deleteLocDraftToken, 1000);
+                }
+            }
+        });
+
+        saveDiaryButton = findViewById(R.id.save_diary_button);
+        saveDiaryButton.setOnClickListener(v -> {
+
+            //first need to get all user input in edit texts and if there is an image
+            String title = diaryTitle.getText().toString();
+            String note = diaryNote.getText().toString();
+            String loc = diaryLoc.getText().toString();
+            String date = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
+            // before saving to data base we need to check if any compulsory field are empty or not
+            // title and note are compulsory not to be empty for both of cases if user wants to save diary with image or without image.
+            if (!title.isEmpty() && !note.isEmpty()) {
+                // now we check if the user wants to add image diary or textDiary
+                if (isTextDiary(loc)) {
+                    // another case to be checked before saving data to database is to check that firebase user is not null
+                    if (firebaseUser != null) {
+                        // we need to disable the button from another click in case if user clicks the button 2 times so we dont save the same data again
+                        saveDiaryButton.setClickable(false);
+                        //enable progress bar
+                        progressIndicator.setVisibility(View.VISIBLE);
+                        progressIndicator.setProgressCompat(500, true);
+                        // we also pass userId to our method to save the diary which belongs to our firebaseUser
+                        saveTextDiaryToDatabase(title, note, date, firebaseUser.getUid());
                     }
-
+                } else if (isImageDiary(loc)) {
+                    if (firebaseUser != null) {
+                        // we need to disable the button from another click in case if user clicks the button 2 times so we dont save the same data again
+                        saveDiaryButton.setClickable(false);
+                        progressIndicator.setVisibility(View.VISIBLE);
+                        progressIndicator.setProgressCompat(300, true);
+                        saveImageDiaryToStorage(title, note, loc, date, selectedImage, firebaseUser.getUid());
+                    }
                 } else {
-                    Toast.makeText(getApplicationContext(), "Please enter both title and note.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getApplicationContext(), "Please fill up all fields", Toast.LENGTH_SHORT).show();
                 }
 
+            } else {
+                Toast.makeText(getApplicationContext(), "Please enter both title and note.", Toast.LENGTH_SHORT).show();
             }
+
         });
+
+        toolbar.getMenu().getItem(0).setOnMenuItemClickListener(item -> {
+            displayOptionBuilder();
+            return false;
+        });
+        toolbar.setNavigationOnClickListener(v -> onBackPressed());
+
+        draftStatus = findViewById(R.id.draft_status);
+
+    }
+
+    private Thread getThreadSavingDraft(String fileName, String draftText) {
+
+        return new Thread() {
+            @Override
+            public void run(){
+
+                runOnUiThread(() -> draftStatus.setText("Saving..."));
+
+                try {
+
+                    FileOutputStream fOut = openFileOutput(fileName ,MODE_PRIVATE);
+                    fOut.write(draftText.getBytes());
+                    fOut.close();
+
+                    Log.d(TAG, "Saved inside " + fileName);
+
+                }
+                catch (Exception e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+
+                try {
+                    sleep(2000L);
+                } catch (InterruptedException e) {
+                    Log.e(TAG, "Thread saving draft got interrupt", e);
+                }
+
+                runOnUiThread(() -> draftStatus.setText("Draft saved"));
+
+            }
+        };
+
+    }
+
+    private Thread getThreadDeletingDraft(String fileName) {
+
+        return new Thread() {
+            @Override
+            public void run(){
+
+                runOnUiThread(() -> draftStatus.setText("Saving..."));
+
+                boolean isDraftDeleted = getApplicationContext().deleteFile(fileName);
+                Log.d(TAG,fileName + " deleted : "+isDraftDeleted);
+
+                try {
+                    sleep(2000L);
+                } catch (InterruptedException e) {
+                    Log.e(TAG, "Thread saving draft got interrupt", e);
+                }
+
+                runOnUiThread(() -> draftStatus.setText("Saved"));
+
+            }
+        };
+
+    }
+
+    private String getDraftFromFile(String fileName){
+
+        StringBuilder stringBuilder = new StringBuilder();
+
+        try{
+            FileInputStream fis = getApplicationContext().openFileInput(fileName);
+            InputStreamReader inputStreamReader = new InputStreamReader(fis, StandardCharsets.UTF_8);
+
+            try (BufferedReader reader = new BufferedReader(inputStreamReader)) {
+                String line = reader.readLine();
+
+                //handle
+                if(line != null) stringBuilder.append(line);
+            }
+
+            fis.close();
+            inputStreamReader.close();
+
+        } catch(FileNotFoundException e){
+            Log.e(TAG, fileName + " not found", e);
+        } catch (IOException e) {
+            Log.e(TAG, "Error reading " + fileName, e);
+        }
+
+        Log.d(TAG, fileName + " output: " + stringBuilder);
+
+        if(stringBuilder.toString().equals(null)){
+
+        }
+        return stringBuilder.toString();
+
+    }
+
+    @Override
+    public void onBackPressed() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Do you want to keep the draft?");
+        builder.setPositiveButton("Keep", (dialog, which) -> NewDiaryActivity.super.onBackPressed());
+        builder.setNeutralButton("Remove", (dialog, which) -> {
+
+            boolean isDraftDeleted = getApplicationContext().deleteFile("draftText");
+            Log.d(TAG, "Delete text draft :" + isDraftDeleted);
+
+            isDraftDeleted = getApplicationContext().deleteFile("draftTitle");
+            Log.d(TAG, "Delete title draft :" + isDraftDeleted);
+
+            isDraftDeleted =  getApplicationContext().deleteFile("draftLoc");
+            Log.d(TAG, "Delete location draft :" + isDraftDeleted);
+
+            isDraftDeleted = getApplicationContext().deleteFile("draftImage");
+            Log.d(TAG, "Delete image draft :" + isDraftDeleted);
+
+            NewDiaryActivity.super.onBackPressed();
+
+        });
+        builder.create().show();
     }
 
     private boolean isTextDiary(String loc){
@@ -199,74 +418,63 @@ public class NewDiaryActivity extends AppCompatActivity {
         //now finally we save the hashmap that holds our data in to the database to the diaryNode we created
         progressIndicator.setVisibility(View.VISIBLE); // show progress bar
         progressIndicator.setProgressCompat(100,true);
-        diaryNode.updateChildren(diaryHashmap).addOnCompleteListener(new OnCompleteListener<Void>() {
-            @Override
-            public void onComplete(@NonNull @NotNull Task<Void> task) {
-                //we check if task is successfull
-                //task is the operation we requested to firebase real-time database to do.
-                if(task.isSuccessful()){
-                    // we show a message to user the diary added successfully and we redirect the user back to MainActivity.class
-                    progressIndicator.setVisibility(View.INVISIBLE);
-                    Toast.makeText(getApplicationContext(),"Diary added Successfully",Toast.LENGTH_SHORT).show();
-                    Intent intent=new Intent(getApplicationContext(),MainActivity.class);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP); //We shouldn't let the user to press on back button
-                    startActivity(intent);
-                    finish(); //we finish the AddDiary activity lifecycle
-                }
+        diaryNode.updateChildren(diaryHashmap).addOnCompleteListener(task -> {
+            //we check if task is successfull
+            //task is the operation we requested to firebase real-time database to do.
+            if(task.isSuccessful()){
+                // we show a message to user the diary added successfully and we redirect the user back to MainActivity.class
+                progressIndicator.setVisibility(View.INVISIBLE);
+                Toast.makeText(getApplicationContext(),"Diary added Successfully",Toast.LENGTH_SHORT).show();
+                Intent intent=new Intent(getApplicationContext(),MainActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP); //We shouldn't let the user to press on back button
+                startActivity(intent);
+                deleteAllDraft();
+                finish(); //we finish the AddDiary activity lifecycle
             }
-        }).addOnFailureListener(new OnFailureListener() {
-            @Override
-            public void onFailure(@NonNull @NotNull Exception e) {
-                //in case that any failure happens we show an error message to user.
-                // error message is wrapped in e variable in onFailuer method and we use that message.
-                Toast.makeText(getApplicationContext(),e.getMessage(),Toast.LENGTH_SHORT).show();
-                //need to make the saveDiary button back to clickable state
-                saveDiaryButton.setClickable(true);
-            }
+        }).addOnFailureListener(e -> {
+            //in case that any failure happens we show an error message to user.
+            // error message is wrapped in e variable in onFailuer method and we use that message.
+            Toast.makeText(getApplicationContext(),e.getMessage(),Toast.LENGTH_SHORT).show();
+            //need to make the saveDiary button back to clickable state
+            saveDiaryButton.setClickable(true);
         });
     }
     private void saveImageDiaryToStorage(String title, String note, String loc, String date, Uri image, String userId){
         // for image diary we need to save the image into firebase storage first and retrive the link [url] to that storage file
-        //only then save the image URL along with title,note and loc to the firebase real-time database
-        FirebaseStorage firebaseStorage = FirebaseStorage.getInstance();
-        StorageReference storageReference=firebaseStorage.getReference(); //similar to databaseReference
+        //only then save the image URL along with title,note and loc to the firebase real-time databasef
+        StorageReference storageReference= FirebaseStorage.getInstance().getReference(); //similar to databaseReference
         //now we make a file named as userId in our bucket of firebase storage
         //first child is user folder named as userId and second child is the name of selected image by user
         // lastly we upload the selected image into storage by using putFile()
-        storageReference.child(userId).child(image.getLastPathSegment()).putFile(image).addOnCompleteListener(new OnCompleteListener<UploadTask.TaskSnapshot>() {
-            @Override
-            public void onComplete(@NonNull @NotNull Task<UploadTask.TaskSnapshot> task) {
-                //check first if the operation we requested to firebase storage is successfull
-                if(task.isSuccessful()){
-                    // after upload to storage we need to retrieve back the url path that the image is stored
-                    //another listener is required to access the file meta data reference in order to retrieve the image URL
-                    task.getResult().getMetadata().getReference().getDownloadUrl().addOnCompleteListener(new OnCompleteListener<Uri>() {
-                        @Override
-                        public void onComplete(@NonNull @NotNull Task<Uri> task) {
+        System.out.println(image.getLastPathSegment());
+        storageReference.child(userId).child(image.getLastPathSegment()).putFile(image)
+                .addOnCompleteListener(new OnCompleteListener<UploadTask.TaskSnapshot>() {
+                    @Override
+                        public void onComplete(@NonNull @NotNull Task<UploadTask.TaskSnapshot> task) {
+                        //check first if the operation we requested to firebase storage is successfull
                             if(task.isSuccessful()){
-                                String imageURL=task.getResult().toString();
-                                //now we need to save all data in firebase real-time database
-                                saveImageDiaryToDatabase(title,note,loc, date,imageURL,userId);
+                            // after upload to storage we need to retrieve back the url path that the image is stored
+                            //another listener is required to access the file meta data reference in order to retrieve the image URL
+                            task.getResult().getMetadata().getReference().getDownloadUrl()
+                                .addOnCompleteListener(task1 -> {
+                                    if(task1.isSuccessful()){
+                                        String imageURL= task1.getResult().toString();
+                                        //now we need to save all data in firebase real-time database
+                                        saveImageDiaryToDatabase(title,note,loc, date,imageURL,userId);
+                                    }
+                                }).addOnFailureListener(e -> {
+                                    Toast.makeText(getApplicationContext(),e.getMessage(),Toast.LENGTH_SHORT).show();
+                                    saveDiaryButton.setClickable(true);
+                                });
+
                             }
-                        }
-                    }).addOnFailureListener(new OnFailureListener() {
-                        @Override
-                        public void onFailure(@NonNull @NotNull Exception e) {
-                            Toast.makeText(getApplicationContext(),e.getMessage(),Toast.LENGTH_SHORT).show();
-                            saveDiaryButton.setClickable(true);
-                        }
-                    });
 
-                }
-
-            }
-        }).addOnFailureListener(new OnFailureListener() {
-            @Override
-            public void onFailure(@NonNull @NotNull Exception e) {
-                Toast.makeText(getApplicationContext(),e.getMessage(),Toast.LENGTH_SHORT).show();
-                saveDiaryButton.setClickable(true);
-            }
-        });
+                        }
+                })
+                .addOnFailureListener(e -> {
+                    Toast.makeText(getApplicationContext(),e.getMessage(),Toast.LENGTH_SHORT).show();
+                    saveDiaryButton.setClickable(true);
+                });
 
     }
     private void saveImageDiaryToDatabase(String title,String note,String loc, String date,String imageURL,String userId){
@@ -292,6 +500,7 @@ public class NewDiaryActivity extends AppCompatActivity {
                     Intent intent=new Intent(getApplicationContext(),MainActivity.class);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP); //We shouldn't let the user to press on back button
                     startActivity(intent);
+                    deleteAllDraft();
                     finish(); //we finish the AddDiary activity lifecycle
                 }
             }
@@ -311,19 +520,16 @@ public class NewDiaryActivity extends AppCompatActivity {
         //here we only use gallery option if you would like to add camera option add another element to the options array
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Choose Image from");
-        builder.setItems(options, new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                //need to check which item from options is selected here we only have one option
-                if (which == 0) {
-                    //first we check if user granted the permission to acces the phone storage
-                    if (!checkStoragePermission()) {
-                        //if is not granted we will request permission
-                        requestStoragePermission();
-                    } else {
-                        //when permission is granted we open the gallery
-                        pickFromGallery();
-                    }
+        builder.setItems(options, (dialog, which) -> {
+            //need to check which item from options is selected here we only have one option
+            if (which == 0) {
+                //first we check if user granted the permission to acces the phone storage
+                if (!checkStoragePermission()) {
+                    //if is not granted we will request permission
+                    requestStoragePermission();
+                } else {
+                    //when permission is granted we open the gallery
+                    pickFromGallery();
                 }
             }
         });
@@ -348,22 +554,19 @@ public class NewDiaryActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        switch (requestCode) {
-            case STORAGE_REQUEST_CODE: {
-                if (grantResults.length > 0) {
-                    boolean storageAccepted = grantResults[0] == PackageManager.PERMISSION_GRANTED;
-                    //if the access granted then we open gallery
-                    if (storageAccepted) {
-                        pickFromGallery();
-                    } else {
-                        //if not granted we send request again for access and
-                        requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, STORAGE_REQUEST_CODE);
-
-                    }
+        if (requestCode == STORAGE_REQUEST_CODE) {
+            if (grantResults.length > 0) {
+                boolean storageAccepted = grantResults[0] == PackageManager.PERMISSION_GRANTED;
+                //if the access granted then we open gallery
+                if (storageAccepted) {
+                    pickFromGallery();
+                } else {
+                    //if not granted we send request again for access and
+                    requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, STORAGE_REQUEST_CODE);
                 }
             }
-            break;
         }
+
     }
 
     //when user selects image from gallery this method will be triggered
@@ -429,14 +632,8 @@ public class NewDiaryActivity extends AppCompatActivity {
                 }
             }
 
-            //we use Glide to upload the image in our app
-            Glide.with(this)
-                    .load(selectedImage) //the uri of the image
-                    .transform(new CenterCrop()) //to fit properly in our image view size
-                    .transition(DrawableTransitionOptions.withCrossFade()) //with a nice transition for user experience
-                    .into(diaryImage); //the image view that needs to be place in
+            uploadImageToApp(selectedImage);
 
-            diaryImage.setVisibility(View.VISIBLE);
             diaryLoc.setVisibility(View.VISIBLE);
 
             //get highest probability through logging (run in debug mode (?) )
@@ -445,9 +642,74 @@ public class NewDiaryActivity extends AppCompatActivity {
             diaryLoc.setText(probability.get(bestPredictIndex).getLabel());
             diaryLoc.requestFocus(diaryLoc.getTextDirection()); // enable the edit text focus in case if prediction is wrong user must know it is editable by user.
 
+            saveDraftImage(bitmap);
+
         } catch (IOException e) {
             // if the prediction fails due to any reason
             diaryLoc.setText("Could not predict the name of your selected image");
         }
+    }
+
+    private void uploadImageToApp(Uri selectedImage){
+
+        //we use Glide to upload the image in our app
+        Glide.with(this)
+                .load(selectedImage) //the uri of the image
+                .transform(new CenterCrop()) //to fit properly in our image view size
+                .transition(DrawableTransitionOptions.withCrossFade()) //with a nice transition for user experience
+                .into(diaryImage); //the image view that needs to be place in
+
+        diaryImage.setVisibility(View.VISIBLE);
+    }
+
+    private void saveDraftImage(Bitmap bitmap) {
+
+        new Thread() {
+            @Override
+            public void run() {
+
+                runOnUiThread(() -> draftStatus.setText("Saving..."));
+
+                try {
+                    //ada text tunjuk tengah saving/ draft saved
+
+                    FileOutputStream fOut = openFileOutput("draftImage", MODE_PRIVATE);
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fOut);
+                    fOut.close();
+
+                    Log.d(TAG, "Image saved inside draftImage");
+                } catch (Exception e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+
+                runOnUiThread(() -> draftStatus.setText("Draft saved"));
+
+            }
+        }.start();
+
+    }
+
+    private void deleteAllDraft(){
+
+        new Thread() {
+            @Override
+            public void run() {
+
+                boolean isDraftDeleted = getApplicationContext().deleteFile("draftTitle");
+                Log.d(TAG, "Delete draftTitle : " + isDraftDeleted);
+
+                isDraftDeleted = getApplicationContext().deleteFile("draftText");
+                Log.d(TAG, "Delete draftText : " + isDraftDeleted);
+
+                isDraftDeleted = getApplicationContext().deleteFile("draftImage");
+                Log.d(TAG, "Delete draftImage : " + isDraftDeleted);
+
+                isDraftDeleted = getApplicationContext().deleteFile("draftLoc");
+                Log.d(TAG, "Delete draftLoc : " + isDraftDeleted);
+
+            }
+        }.start();
+
     }
 }
