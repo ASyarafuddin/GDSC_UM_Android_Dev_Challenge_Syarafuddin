@@ -14,19 +14,34 @@
         android:maxHeight="40dp"
         app:menu="@menu/add_diary_toolbar_menu"
         app:navigationIcon="@drawable/ic_arrow_back"
-        app:titleTextColor="@color/brownish" />
+        app:titleTextColor="@color/brownish">
+
+        <TextView
+            android:id="@+id/draft_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBottom="@+id/add_diary_toolbar"
+            android:layout_alignParentStart="true"
+            android:layout_alignParentTop="true"
+            android:layout_alignParentEnd="true"
+            android:layout_marginStart="10dp"
+            android:layout_marginTop="18.5dp"
+            android:layout_marginBottom="18.5dp"
+            android:textColor="@color/brownish"
+            android:textStyle="italic"/>
+    </com.google.android.material.appbar.MaterialToolbar>
 
     <com.google.android.material.textfield.TextInputEditText
         android:id="@+id/diary_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Enter a title"
         android:layout_below="@+id/add_diary_toolbar"
         android:background="@color/cream"
-        android:padding="20dp"
+        android:hint="Enter a title"
         android:maxLength="20"
-        android:textColorHint="@color/brownish"
-        android:textColor="@color/dark_greyish"/>
+        android:padding="20dp"
+        android:textColor="@color/dark_greyish"
+        android:textColorHint="@color/brownish" />
 
     <ImageView
         android:id="@+id/diary_image"
@@ -64,20 +79,21 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/diary_title">
+
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/diary_note"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:maxLength="500"
-            android:background="@android:color/transparent"
             android:layout_margin="10dp"
+            android:background="@android:color/transparent"
+            android:backgroundTint="@color/brownish"
+            android:hint="What's in your mind"
+            android:maxLength="500"
+            android:maxLines="10"
             android:minLines="3"
             android:padding="10dp"
-            android:hint="What's in your mind"
-            android:backgroundTint="@color/brownish"
-            android:textColorHint="@color/brownish"
             android:textColor="@color/dark_greyish"
-            android:maxLines="10"/>
+            android:textColorHint="@color/brownish" />
     </ScrollView>
 
     <com.google.android.material.progressindicator.CircularProgressIndicator
