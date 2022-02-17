@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">Hello World</string>
     <string name="firebaseDb_instance">https://idiary-e9ed6-default-rtdb.firebaseio.com/</string>
+    <string name="facebook_app_id">Your facebook app id</string>
+    <string name="fb_login_protocol_scheme">Facebook login protocol scheme</string>
+    <string name="facebook_client_token">Facebook client token</string>
 </resources>
