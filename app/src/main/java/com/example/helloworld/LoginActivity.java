@@ -3,6 +3,7 @@ package com.example.helloworld;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -22,13 +23,16 @@ import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
 import com.google.android.material.button.MaterialButton;
 import com.google.firebase.auth.AuthCredential;
+import com.google.firebase.auth.AuthResult;
 import com.google.firebase.auth.FacebookAuthProvider;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.GoogleAuthProvider;
+import com.google.firebase.auth.OAuthProvider;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -45,13 +49,25 @@ public class LoginActivity extends AppCompatActivity {
     private MaterialButton mFbSignInButton;
     private CallbackManager callbackManager;
 
+    private MaterialButton mTwSignInButton;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login); //show UI
-        mGoogleSignInButton = findViewById(R.id.google_login_button);
 
         mAuth = FirebaseAuth.getInstance();
+
+        setupGoogleLogin();
+
+        setupFbLogin();
+
+        setupTwLogin();
+
+    }
+
+    private void setupGoogleLogin(){
+        mGoogleSignInButton = findViewById(R.id.google_login_button);
 
         GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestIdToken(getString(R.string.default_web_client_id)) //boleh hilangkan dengan edit dekat build.gradle (true) gms
@@ -61,9 +77,9 @@ public class LoginActivity extends AppCompatActivity {
         mGoogleSignInClient = GoogleSignIn.getClient(this, gso);
 
         mGoogleSignInButton.setOnClickListener(view -> initiateGoogleSignIn());
+    }
 
-
-        //facebook login setup
+    private void setupFbLogin(){
         FacebookSdk.sdkInitialize(getApplicationContext());
         AppEventsLogger.activateApp(getApplication());
 
@@ -85,14 +101,58 @@ public class LoginActivity extends AppCompatActivity {
                     public void onError(FacebookException exception) {
                     }
                 }
-                );
+        );
 
         mFbSignInButton = findViewById(R.id.facebook_login_button);
         mFbSignInButton.setOnClickListener(view -> LoginManager.getInstance().logInWithReadPermissions(
                 this,
                 Arrays.asList("email", "public_profile")
         ));
+    }
 
+    private void setupTwLogin(){
+        OAuthProvider.Builder provider = OAuthProvider.newBuilder("twitter.com");
+        mTwSignInButton = findViewById(R.id.twitter_login_button);
+        mTwSignInButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+                Task<AuthResult> pendingResultTask = mAuth.getPendingAuthResult();
+                if (pendingResultTask != null) {
+                    // There's something already here! Finish the sign-in for your user.
+                    pendingResultTask.addOnSuccessListener( new OnSuccessListener<AuthResult>() {
+                        @Override
+                        public void onSuccess(AuthResult authResult) {
+                            FirebaseUser user = mAuth.getCurrentUser();
+                            Log.d(TAG, "Twitter Log in Successful");
+                            updateUI(user);
+                        }
+                    }).addOnFailureListener( new OnFailureListener() {
+                        @Override
+                        public void onFailure(@NonNull Exception e) {
+                            Log.e(TAG, e.getMessage(), e);
+                            updateUI(null);
+                        }
+                    });
+                } else {
+                    mAuth.startActivityForSignInWithProvider(LoginActivity.this, provider.build())
+                            .addOnSuccessListener( new OnSuccessListener<AuthResult>() {
+                                @Override
+                                public void onSuccess(AuthResult authResult) {
+                                    FirebaseUser user = mAuth.getCurrentUser();
+                                    Log.d(TAG, "Twitter Log in Successful");
+                                    updateUI(user);
+                                }
+                            }).addOnFailureListener( new OnFailureListener() {
+                        @Override
+                        public void onFailure(@NonNull Exception e) {
+                            Log.e(TAG, e.getMessage(), e);
+                            updateUI(null);
+                        }
+                    });
+                }
+            }
+        });
     }
 
     private void initiateGoogleSignIn() {
@@ -110,11 +170,11 @@ public class LoginActivity extends AppCompatActivity {
             try {
                 // Google Sign In was successful, authenticate with Firebase
                 GoogleSignInAccount account = task.getResult(ApiException.class);
-//                Log.d(TAG, "firebaseAuthWithGoogle:" + account.getId());
+                Log.d(TAG, "firebaseAuthWithGoogle:" + account.getId());
                 firebaseAuthWithGoogle(account.getIdToken());
             } catch (ApiException e) {
                 // Google Sign In failed, update UI appropriately
-//                Log.w(TAG, "Google sign in failed", e);
+                Log.w(TAG, "Google sign in failed", e);
                 Toast.makeText(LoginActivity.this, "Signed in failed", Toast.LENGTH_SHORT).show();
             }
         }
@@ -129,8 +189,6 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void firebaseAuthWithFacebook(AccessToken token) {
-        Log.d(TAG, "handleFacebookAccessToken:" + token);
-
         AuthCredential credential = FacebookAuthProvider.getCredential(token.getToken());
         signIn(credential);
     }
@@ -155,7 +213,7 @@ public class LoginActivity extends AppCompatActivity {
             @Override
             public void onFailure(@NonNull @NotNull Exception e) {
                 // if any failuer happens we give feedback to the user
-//                Toast.makeText(getApplicationContext(),e.getMessage(),Toast.LENGTH_SHORT).show();
+                Toast.makeText(getApplicationContext(),e.getMessage(),Toast.LENGTH_SHORT).show();
                 updateUI(null);
             }
         });
