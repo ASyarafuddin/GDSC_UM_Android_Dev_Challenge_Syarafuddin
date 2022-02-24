@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
@@ -91,6 +92,10 @@ public class NewDiaryActivity extends AppCompatActivity {
     private FirebaseAuth firebaseAuth;
     private DatabaseReference databaseReference;
 
+    //multithreading using HandlerThread
+    HandlerThread handlerThread;
+    private Handler draftHandler;
+    
     //thread token for handler
     private String saveTitleDraftToken = "1";
     private String deleteTitleDraftToken = "-1";
@@ -138,7 +143,9 @@ public class NewDiaryActivity extends AppCompatActivity {
             }
         }
 
-        Handler saveDraftHandler = new Handler();
+        handlerThread = new HandlerThread("MyHandlerThread");
+        handlerThread.start();
+        draftHandler = new Handler(handlerThread.getLooper());
 
         //instead of using focusChangeListener, i use TextChangedListener because user may change the text,
         // and if the app is closed at that moment, it is not being saved]
@@ -157,13 +164,14 @@ public class NewDiaryActivity extends AppCompatActivity {
             @RequiresApi(api = Build.VERSION_CODES.P)
             @Override
             public void afterTextChanged(Editable s) {
+                draftStatus.setText("Saving...");
                 if (!s.toString().equals("")){
-                    saveDraftHandler.removeCallbacksAndMessages(saveTitleDraftToken);
-                    saveDraftHandler.postDelayed(getThreadSavingDraft("draftTitle",s.toString()), saveTitleDraftToken, 1000);
+                    draftHandler.removeCallbacksAndMessages(saveTitleDraftToken);
+                    draftHandler.postDelayed(getThreadSavingDraft("draftTitle",s.toString()), saveTitleDraftToken, 1000);
                 }
                 else{
-                    saveDraftHandler.removeCallbacksAndMessages(deleteTitleDraftToken);
-                    saveDraftHandler.postDelayed(getThreadDeletingDraft("draftTitle"), deleteTitleDraftToken, 1000);
+                    draftHandler.removeCallbacksAndMessages(deleteTitleDraftToken);
+                    draftHandler.postDelayed(getThreadDeletingDraft("draftTitle"), deleteTitleDraftToken, 1000);
                 }
             }
         });
@@ -183,13 +191,14 @@ public class NewDiaryActivity extends AppCompatActivity {
             @RequiresApi(api = Build.VERSION_CODES.P)
             @Override
             public void afterTextChanged(Editable s) {
+                draftStatus.setText("Saving...");
                 if (!s.toString().equals("")){
-                    saveDraftHandler.removeCallbacksAndMessages(saveTextDraftToken);
-                    saveDraftHandler.postDelayed(getThreadSavingDraft("draftText",s.toString()), saveTextDraftToken, 1000);
+                    draftHandler.removeCallbacksAndMessages(saveTextDraftToken);
+                    draftHandler.postDelayed(getThreadSavingDraft("draftText",s.toString()), saveTextDraftToken, 1000);
                 }
                 else{
-                    saveDraftHandler.removeCallbacksAndMessages(deleteTextDraftToken);
-                    saveDraftHandler.postDelayed(getThreadDeletingDraft("draftText"), deleteTextDraftToken, 1000);
+                    draftHandler.removeCallbacksAndMessages(deleteTextDraftToken);
+                    draftHandler.postDelayed(getThreadDeletingDraft("draftText"), deleteTextDraftToken, 1000);
                 }
             }
         });
@@ -208,13 +217,14 @@ public class NewDiaryActivity extends AppCompatActivity {
             @RequiresApi(api = Build.VERSION_CODES.P)
             @Override
             public void afterTextChanged(Editable s) {
+                draftStatus.setText("Saving...");
                 if (!s.toString().equals("")){
-                    saveDraftHandler.removeCallbacksAndMessages(saveLocDraftToken);
-                    saveDraftHandler.postDelayed(getThreadSavingDraft("draftLoc",s.toString()), saveLocDraftToken, 1000);
+                    draftHandler.removeCallbacksAndMessages(saveLocDraftToken);
+                    draftHandler.postDelayed(getThreadSavingDraft("draftLoc",s.toString()), saveLocDraftToken, 1000);
                 }
                 else{
-                    saveDraftHandler.removeCallbacksAndMessages(deleteLocDraftToken);
-                    saveDraftHandler.postDelayed(getThreadDeletingDraft("draftLoc"), deleteLocDraftToken, 1000);
+                    draftHandler.removeCallbacksAndMessages(deleteLocDraftToken);
+                    draftHandler.postDelayed(getThreadDeletingDraft("draftLoc"), deleteLocDraftToken, 1000);
                 }
             }
         });
@@ -270,13 +280,18 @@ public class NewDiaryActivity extends AppCompatActivity {
 
     }
 
-    private Thread getThreadSavingDraft(String fileName, String draftText) {
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        handlerThread.quitSafely();
+    }
+    
+    private Runnable getThreadSavingDraft(String fileName, String draftText) {
 
-        return new Thread() {
+        return new Runnable(){
+
             @Override
-            public void run(){
-
-                runOnUiThread(() -> draftStatus.setText("Saving..."));
+            public void run() {
 
                 try {
 
@@ -292,39 +307,26 @@ public class NewDiaryActivity extends AppCompatActivity {
                     e.printStackTrace();
                 }
 
-                try {
-                    sleep(2000L);
-                } catch (InterruptedException e) {
-                    Log.e(TAG, "Thread saving draft got interrupt", e);
-                }
-
                 runOnUiThread(() -> draftStatus.setText("Draft saved"));
-
             }
+
         };
 
     }
 
-    private Thread getThreadDeletingDraft(String fileName) {
+    private Runnable getThreadDeletingDraft(String fileName) {
 
-        return new Thread() {
+        return new Runnable(){
+
             @Override
-            public void run(){
-
-                runOnUiThread(() -> draftStatus.setText("Saving..."));
+            public void run() {
 
                 boolean isDraftDeleted = getApplicationContext().deleteFile(fileName);
                 Log.d(TAG,fileName + " deleted : "+isDraftDeleted);
 
-                try {
-                    sleep(2000L);
-                } catch (InterruptedException e) {
-                    Log.e(TAG, "Thread saving draft got interrupt", e);
-                }
-
-                runOnUiThread(() -> draftStatus.setText("Saved"));
-
+                runOnUiThread(() -> draftStatus.setText("Draft saved"));
             }
+
         };
 
     }
@@ -664,7 +666,7 @@ public class NewDiaryActivity extends AppCompatActivity {
 
     private void saveDraftImage(Bitmap bitmap) {
 
-        new Thread() {
+        draftHandler.post(new Runnable(){
             @Override
             public void run() {
 
@@ -686,16 +688,15 @@ public class NewDiaryActivity extends AppCompatActivity {
                 runOnUiThread(() -> draftStatus.setText("Draft saved"));
 
             }
-        }.start();
+        });
 
     }
 
     private void deleteAllDraft(){
 
-        new Thread() {
+        draftHandler.post(new Runnable() {
             @Override
             public void run() {
-
                 boolean isDraftDeleted = getApplicationContext().deleteFile("draftTitle");
                 Log.d(TAG, "Delete draftTitle : " + isDraftDeleted);
 
@@ -707,9 +708,8 @@ public class NewDiaryActivity extends AppCompatActivity {
 
                 isDraftDeleted = getApplicationContext().deleteFile("draftLoc");
                 Log.d(TAG, "Delete draftLoc : " + isDraftDeleted);
-
             }
-        }.start();
+        });
 
     }
 }
