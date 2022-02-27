@@ -93,7 +93,7 @@ public class NewDiaryActivity extends AppCompatActivity {
     private DatabaseReference databaseReference;
 
     //multithreading using HandlerThread
-    HandlerThread handlerThread;
+    private HandlerThread handlerThread;
     private Handler draftHandler;
     
     //thread token for handler
