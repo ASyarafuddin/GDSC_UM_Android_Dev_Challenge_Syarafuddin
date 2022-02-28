@@ -4,4 +4,6 @@
     <string name="facebook_app_id">Your facebook app id</string>
     <string name="fb_login_protocol_scheme">Facebook login protocol scheme</string>
     <string name="facebook_client_token">Facebook client token</string>
+    
+    <string name="paralleldots_api_key">Your api key</string>
 </resources>
