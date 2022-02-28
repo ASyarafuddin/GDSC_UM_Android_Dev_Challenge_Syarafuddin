@@ -2,7 +2,7 @@ package com.example.helloworld;
 
 public class Diary {
 
-    private String title, note, date, diaryId, type, image, placeName;
+    private String title, note, date, emotion, diaryId, type, image, placeName;
 
     public Diary() {
     }
@@ -31,6 +31,15 @@ public class Diary {
         this.date = date;
     }
 
+    public String getEmotion() {
+        return emotion;
+    }
+
+    public void setEmotion(String emotion) {
+        this.emotion = emotion;
+    }
+
+    
     public String getDiaryId() {
         return diaryId;
     }
