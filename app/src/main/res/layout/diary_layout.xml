@@ -87,6 +87,25 @@
             android:textSize="11sp"
             android:textStyle="normal"
             tools:ignore="HardcodedText" />
+        
+        <TextView
+            android:id="@+id/adapter_diary_emotion"
+            android:layout_width="match_parent"
+            android:layout_height="19dp"
+            android:layout_above="@+id/adapter_linear_layout_note"
+            android:layout_below="@+id/adapter_diary_title"
+            android:layout_alignParentStart="true"
+            android:layout_marginStart="0dp"
+            android:layout_marginTop="21dp"
+            android:layout_marginBottom="310dp"
+            android:paddingLeft="10dp"
+            android:shadowColor="@color/dark_greyish"
+            android:shadowRadius="30"
+            android:text="Emotion"
+            android:textColor="@color/white"
+            android:textSize="11sp"
+            android:textStyle="normal"
+            tools:ignore="HardcodedText" />
 
     </RelativeLayout>
 

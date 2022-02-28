@@ -41,6 +41,7 @@ public class DiaryAdapter extends RecyclerView.Adapter<DiaryAdapter.DiaryViewHol
         holder.diaryTitle.setText(diary.getTitle());
         holder.diaryNote.setText(diary.getNote());
         holder.diaryDate.setText("Created on" + diary.getDate());
+        holder.diaryEmotion.setText(diary.getEmotion());
         String diaryType = diary.getType();
         if (diaryType.equals("text")) {
             holder.diaryLoc.setVisibility(View.GONE);
@@ -67,8 +68,8 @@ public class DiaryAdapter extends RecyclerView.Adapter<DiaryAdapter.DiaryViewHol
         private final TextView diaryNote;
         private final TextView diaryLoc;
         private final TextView diaryDate;
+        private final TextView diaryEmotion;
         private final ImageView diaryImage;
-
 
         public DiaryViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -77,6 +78,7 @@ public class DiaryAdapter extends RecyclerView.Adapter<DiaryAdapter.DiaryViewHol
             diaryLoc = itemView.findViewById(R.id.adapter_diary_location);
             diaryImage = itemView.findViewById(R.id.adapter_diary_image);
             diaryDate = itemView.findViewById(R.id.adapter_diary_date);
+            diaryEmotion = itemView.findViewById(R.id.adapter_diary_emotion);
 
         }
     }

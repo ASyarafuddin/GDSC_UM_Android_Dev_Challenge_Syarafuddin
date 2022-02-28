@@ -246,11 +246,20 @@ public class NewDiaryActivity extends AppCompatActivity {
                     if (firebaseUser != null) {
                         // we need to disable the button from another click in case if user clicks the button 2 times so we dont save the same data again
                         saveDiaryButton.setClickable(false);
-                        //enable progress bar
+
                         progressIndicator.setVisibility(View.VISIBLE);
                         progressIndicator.setProgressCompat(500, true);
-                        // we also pass userId to our method to save the diary which belongs to our firebaseUser
-                        saveTextDiaryToDatabase(title, note, date, firebaseUser.getUid());
+
+                        draftHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                String emotion = detectEmotion(note);
+                                Log.d(TAG, "Emotion detected: " + emotion);
+
+                                // we also pass userId to our method to save the diary which belongs to our firebaseUser
+                                runOnUiThread(() -> saveTextDiaryToDatabase(title, note, date, emotion, firebaseUser.getUid()) );
+                            }
+                        });
                     }
                 } else if (isImageDiary(loc)) {
                     if (firebaseUser != null) {
@@ -258,7 +267,15 @@ public class NewDiaryActivity extends AppCompatActivity {
                         saveDiaryButton.setClickable(false);
                         progressIndicator.setVisibility(View.VISIBLE);
                         progressIndicator.setProgressCompat(300, true);
-                        saveImageDiaryToStorage(title, note, loc, date, selectedImage, firebaseUser.getUid());
+                        draftHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                String emotion = detectEmotion(note);
+                                Log.d(TAG, "Emotion detected: " + emotion); //Network Exception sebab perform network operation on main thread
+
+                                runOnUiThread(() -> saveImageDiaryToStorage(title, note, loc, date, emotion, selectedImage, firebaseUser.getUid()) );
+                            }
+                        });
                     }
                 } else {
                     Toast.makeText(getApplicationContext(), "Please fill up all fields", Toast.LENGTH_SHORT).show();
@@ -364,6 +381,180 @@ public class NewDiaryActivity extends AppCompatActivity {
 
     }
 
+        private String detectEmotion(String note){
+        String[] sentence = note.split("[.]");
+        if(sentence.length == 1) {
+            try {
+                return detectEmotionFromSentence(sentence[0]);
+            } catch (Exception e) {
+                e.printStackTrace();
+
+                //cannot detect emotion
+                return "";
+            }
+        }
+
+        try{
+            return detectEmotionFromMultipleSentence(sentence);
+        }catch (Exception e){
+            e.printStackTrace();
+
+            //cannot detect emotion
+            return "";
+        }
+    }
+
+    private String detectEmotionFromSentence(String sentence) throws Exception {
+        MyAppParallelDots pd = new MyAppParallelDots(getString(R.string.paralleldots_api_key));
+
+        //unpredictable order of emotion inside JSON string
+        String JSONEmotionPrediction = pd.emotion(sentence);
+        if(JSONEmotionPrediction == null) return "";
+        
+        String[] emotionName = {"Sad", "Fear", "Happy", "Angry", "Bored", "Excited"};
+        int[] emotionIndex = new int[6];
+        int[] charIndexAfterFloat = new int[6];
+
+        int firstColonIndex = JSONEmotionPrediction.indexOf(":");
+
+        //index for each emotion name. Consideration: start search from firstColonIndex to make it faster and because the order may be differ each time (which cannot be patterned)
+        //if there is pattern, i can use previous emotion index to search next emotion index e.g. Fear -> Happy -> ... , i can start search for Happy from Fear index
+        emotionIndex[0] = JSONEmotionPrediction.indexOf("Sad", firstColonIndex);
+        emotionIndex[1] = JSONEmotionPrediction.indexOf("Fear", firstColonIndex);
+        emotionIndex[2] = JSONEmotionPrediction.indexOf("Happy", firstColonIndex);
+        emotionIndex[3] = JSONEmotionPrediction.indexOf("Angry", firstColonIndex);
+        emotionIndex[4] = JSONEmotionPrediction.indexOf("Bored", firstColonIndex);
+        emotionIndex[5] = JSONEmotionPrediction.indexOf("Excited", firstColonIndex);
+
+        //assign index for comma "," with respect to each word (Sad, Fear, Happy, Angry, Bored, Excited) accordingly
+        for (int i = 0; i < emotionIndex.length; i++){
+            charIndexAfterFloat[i] = JSONEmotionPrediction.indexOf(",", emotionIndex[i]);
+            if(charIndexAfterFloat[i] == -1) charIndexAfterFloat[i] = JSONEmotionPrediction.length() - 2; //use the third last index of JSON to get the last number of the probability, instead of using comma because last probability not have comma
+        }
+
+        //extract highest probability
+        float significantEmotionProb = 0f;
+        String significantEmotion = null;
+        for (int i = 0; i < emotionIndex.length; i++){
+            int numOfIdxToProbability = 0;
+            if(i == 0) numOfIdxToProbability = 5;
+            else if (i == 1) numOfIdxToProbability = 6;
+            else if (i < emotionIndex.length - 1) numOfIdxToProbability = 7;
+            else numOfIdxToProbability = 9;
+
+            String probability = JSONEmotionPrediction.substring(emotionIndex[i] + numOfIdxToProbability, charIndexAfterFloat[i]);
+            float currentEmotionProb = Float.parseFloat(probability);
+
+            if(currentEmotionProb > significantEmotionProb){
+                significantEmotionProb = currentEmotionProb;
+                significantEmotion = emotionName[i];
+            }
+        }
+
+        Log.d(TAG, "HighestEmotionProb: " + significantEmotionProb + " (" + significantEmotion + ")");
+
+        return significantEmotion;
+    }
+
+    private String detectEmotionFromMultipleSentence(String[] sentence) throws Exception {
+        MyAppParallelDots pd = new MyAppParallelDots(getString(R.string.paralleldots_api_key));
+
+        String sentenceCollection = "[";
+        for (int i = 0; i < sentence.length - 1; i++){
+            sentenceCollection += "\"" + sentence[i] + "\", ";
+        }
+        sentenceCollection += "\"" + sentence[sentence.length - 1] + "\"" + "]";
+
+        JSONArray text_list = (JSONArray) new JSONParser().parse(sentenceCollection);
+        String JSONEmotionPrediction = pd.emotion_batch(text_list);
+        if(JSONEmotionPrediction == null) return "";
+        
+        String[] emotionName = {"Sad", "Fear", "Happy", "Angry", "Bored", "Excited"};
+        int[][] emotionIndex = new int[sentence.length][6];
+        int[][] charIndexAfterFloat = new int[sentence.length][6];
+
+        int firstColonIndex = JSONEmotionPrediction.indexOf(":");
+
+        //index for first word of each emotion
+        emotionIndex[0][0] = JSONEmotionPrediction.indexOf(emotionName[0], firstColonIndex);
+        emotionIndex[0][1] = JSONEmotionPrediction.indexOf(emotionName[1], firstColonIndex);
+        emotionIndex[0][2] = JSONEmotionPrediction.indexOf(emotionName[2], firstColonIndex);
+        emotionIndex[0][3] = JSONEmotionPrediction.indexOf(emotionName[3], firstColonIndex);
+        emotionIndex[0][4] = JSONEmotionPrediction.indexOf(emotionName[4], firstColonIndex);
+        emotionIndex[0][5] = JSONEmotionPrediction.indexOf(emotionName[5], firstColonIndex);
+
+        
+        //track comma that seperate between first and second Emotion object and adjust the index to be before the last digit of float
+        int commaSeparatorIdx = 0;
+        for (int i = 0; i < emotionIndex[0].length; i++) {
+            //track comma ",' index here
+            charIndexAfterFloat[0][i] = JSONEmotionPrediction.indexOf(",", emotionIndex[0][i]);
+            if(charIndexAfterFloat[0][i] > charIndexAfterFloat[0][commaSeparatorIdx]) commaSeparatorIdx = i; //the highest index is the comma separator index
+        }
+        Log.d(TAG,"CommaSeparatorIdx for first Emotion object: " + charIndexAfterFloat[0][commaSeparatorIdx] + " " + JSONEmotionPrediction.charAt(charIndexAfterFloat[0][commaSeparatorIdx]));
+        Log.d(TAG, JSONEmotionPrediction.substring(charIndexAfterFloat[0][commaSeparatorIdx], charIndexAfterFloat[0][commaSeparatorIdx] + 10));
+        charIndexAfterFloat[0][commaSeparatorIdx]--; //get the index of '}', which is the index before of last digit for float number
+
+        
+        //assign index for comma "," with respect to each emotion OR "}" for the last emotion of each Emotion object
+        for (int i = 1; i < emotionIndex.length; i++){
+
+            commaSeparatorIdx = 0;
+
+            for (int j = 0; j < emotionIndex[i].length; j++) {
+                //assign index for comma "," with respect to each emotion
+                emotionIndex[i][j] = JSONEmotionPrediction.indexOf(emotionName[j], emotionIndex[i-1][j] + 1);
+                charIndexAfterFloat[i][j] = JSONEmotionPrediction.indexOf(",", emotionIndex[i][j]);
+
+                //happen when it's the last emotion inside the JSON string. Purpose is to get the char index before the last digit of float
+                if(charIndexAfterFloat[i][j] == -1) charIndexAfterFloat[i][j] = JSONEmotionPrediction.length() - 3;
+
+                //track the highest comma index, as it shows that the comma index is at the comma that seperate between Emotion object
+                //only run if Emotion object > 2
+                if(i < emotionIndex.length - 1 && charIndexAfterFloat[i][j] > charIndexAfterFloat[i][commaSeparatorIdx]) commaSeparatorIdx = j;
+            }
+
+            //if the index is not pointing to the last char before float of last emotion inside JSON string,
+            //get the index of '}', index before the last digit for float number of last emotion in current Emotion object
+            if(commaSeparatorIdx != JSONEmotionPrediction.length() - 3) charIndexAfterFloat[i][commaSeparatorIdx]--;
+
+        }
+
+        
+        //sum the probability of each emotion
+        float[] emotionProb = new float[6]; //each index represent each emotion
+        float totalProbability = 0f;
+        for (int i = 0; i < emotionIndex.length; i++){
+            for (int j = 0; j < emotionIndex[i].length; j++) {
+                int numOfIdxToProbabilityFloat = 0;
+                if(j == 0) numOfIdxToProbabilityFloat = 5;
+                else if (j == 1) numOfIdxToProbabilityFloat = 6;
+                else if (j < emotionIndex[i].length - 1) numOfIdxToProbabilityFloat = 7;
+                else numOfIdxToProbabilityFloat = 9;
+
+                String probability = JSONEmotionPrediction.substring(emotionIndex[i][j] + numOfIdxToProbabilityFloat, charIndexAfterFloat[i][j]);
+                float currentEmotionProb = Float.parseFloat(probability);
+                emotionProb[j] += currentEmotionProb;
+                totalProbability += currentEmotionProb;
+            }
+        }
+
+        
+        //extract emotion with highest probability
+        float highestEmotionProb = 0f;
+        String significantEmotion = null;
+        for (int i = 0; i < emotionIndex.length; i++){
+            //rescaling the probability in range of 0 - 1, and compare probability between emotions
+            if ( (emotionProb[i]/totalProbability) > highestEmotionProb) {
+                highestEmotionProb = emotionProb[i];
+                significantEmotion = emotionName[i];
+            }
+        }
+        Log.d(TAG, "HighestEmotionProb: " + highestEmotionProb + " (" + significantEmotion + ")");
+
+        return significantEmotion;
+    }
+    
     @Override
     public void onBackPressed() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -399,7 +590,7 @@ public class NewDiaryActivity extends AppCompatActivity {
         return !loc.isEmpty() && selectedImage!=null;
     }
 
-    private void saveTextDiaryToDatabase(String title,String note, String date,String userId){
+    private void saveTextDiaryToDatabase(String title,String note, String date, String emotion, String userId){
         //based on structure of firebase database we will make a hashmap to save our data
         // hashmap consist of keys and values for example key:title has value as the title string that the user entered.
         //the hashmap key type should be String and value can be any object type such as :boolean,integer,string and ect.
@@ -407,6 +598,7 @@ public class NewDiaryActivity extends AppCompatActivity {
         diaryHashmap.put("title",title);
         diaryHashmap.put("note",note);
         diaryHashmap.put("date",date);
+        diaryHashmap.put("emotion",emotion);
         diaryHashmap.put("type","text");
         //now that we have our hashmap ready we insert our hashmap in database
         // we save the data using the database reference we initialized in onCreate() method
@@ -441,7 +633,7 @@ public class NewDiaryActivity extends AppCompatActivity {
             saveDiaryButton.setClickable(true);
         });
     }
-    private void saveImageDiaryToStorage(String title, String note, String loc, String date, Uri image, String userId){
+    private void saveImageDiaryToStorage(String title, String note, String loc, String date, String emotion, Uri image, String userId){
         // for image diary we need to save the image into firebase storage first and retrive the link [url] to that storage file
         //only then save the image URL along with title,note and loc to the firebase real-time databasef
         StorageReference storageReference= FirebaseStorage.getInstance().getReference(); //similar to databaseReference
@@ -479,12 +671,13 @@ public class NewDiaryActivity extends AppCompatActivity {
                 });
 
     }
-    private void saveImageDiaryToDatabase(String title,String note,String loc, String date,String imageURL,String userId){
+    private void saveImageDiaryToDatabase(String title,String note,String loc, String date, String emotion,String imageURL,String userId){
         //now the process is the same as we did for textDiary
         HashMap<String,Object> diaryHashmap=new HashMap<>();
         diaryHashmap.put("title",title);
         diaryHashmap.put("note",note);
         diaryHashmap.put("date",date);
+        diaryHashmap.put("emotion", emotion);
         diaryHashmap.put("type","image");
         diaryHashmap.put("image",imageURL);
         diaryHashmap.put("placeName",loc);

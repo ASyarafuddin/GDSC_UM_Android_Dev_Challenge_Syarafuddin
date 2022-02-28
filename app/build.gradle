@@ -70,4 +70,10 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite-task-vision:0.2.0'
     implementation 'org.tensorflow:tensorflow-lite-task-text:0.2.0'
     implementation 'org.tensorflow:tensorflow-lite:2.4.0'
+    
+    //dependencies to use ParallelDots Text API
+    implementation files('libs/paralleldots-1.0.3.jar')
+    implementation 'com.googlecode.json-simple:json-simple:1.1'
+    implementation 'com.sun.activation:javax.activation:1.2.0'
+    implementation 'com.squareup.okhttp3:okhttp:3.10.0'
 }
