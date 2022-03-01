@@ -50,7 +50,6 @@
         android:layout_above="@+id/save_diary_button"
         android:layout_below="@id/diary_note_scrollview"
         android:layout_margin="10dp"
-        android:src="@color/cream"
         android:scaleType="fitXY"
         android:visibility="invisible" />
 
