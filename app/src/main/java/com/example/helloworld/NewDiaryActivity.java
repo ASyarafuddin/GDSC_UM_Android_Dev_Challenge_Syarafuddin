@@ -165,12 +165,16 @@ public class NewDiaryActivity extends AppCompatActivity {
             @Override
             public void afterTextChanged(Editable s) {
                 draftStatus.setText("Saving...");
-                if (!s.toString().equals("")){
-                    draftHandler.removeCallbacksAndMessages(saveTitleDraftToken);
+                if (!s.toString().isEmpty()){
+                    removeRunnable(saveTitleDraftToken, deleteTitleDraftToken);
+
+                    //save draft after user stop typing for 1 sec
                     draftHandler.postDelayed(getThreadSavingDraft("draftTitle",s.toString()), saveTitleDraftToken, 1000);
                 }
                 else{
-                    draftHandler.removeCallbacksAndMessages(deleteTitleDraftToken);
+                    removeRunnable(saveTitleDraftToken, deleteTitleDraftToken);
+
+                    //delete draft after user stop typing for 1 sec
                     draftHandler.postDelayed(getThreadDeletingDraft("draftTitle"), deleteTitleDraftToken, 1000);
                 }
             }
@@ -192,12 +196,16 @@ public class NewDiaryActivity extends AppCompatActivity {
             @Override
             public void afterTextChanged(Editable s) {
                 draftStatus.setText("Saving...");
-                if (!s.toString().equals("")){
-                    draftHandler.removeCallbacksAndMessages(saveTextDraftToken);
+                if (!s.toString().isEmpty()){
+                    removeRunnable(saveTextDraftToken, deleteTextDraftToken);
+
+                    //save draft after user stop typing for 1 sec
                     draftHandler.postDelayed(getThreadSavingDraft("draftText",s.toString()), saveTextDraftToken, 1000);
                 }
                 else{
-                    draftHandler.removeCallbacksAndMessages(deleteTextDraftToken);
+                    removeRunnable(saveTextDraftToken, deleteTextDraftToken);
+
+                    //delete draft after user stop typing for 1 sec
                     draftHandler.postDelayed(getThreadDeletingDraft("draftText"), deleteTextDraftToken, 1000);
                 }
             }
@@ -218,12 +226,16 @@ public class NewDiaryActivity extends AppCompatActivity {
             @Override
             public void afterTextChanged(Editable s) {
                 draftStatus.setText("Saving...");
-                if (!s.toString().equals("")){
-                    draftHandler.removeCallbacksAndMessages(saveLocDraftToken);
+                if (!s.toString().isEmpty()){
+                    removeRunnable(saveLocDraftToken, deleteLocDraftToken);
+
+                    //save draft after user stop typing for 1 sec
                     draftHandler.postDelayed(getThreadSavingDraft("draftLoc",s.toString()), saveLocDraftToken, 1000);
                 }
                 else{
-                    draftHandler.removeCallbacksAndMessages(deleteLocDraftToken);
+                    removeRunnable(saveLocDraftToken, deleteLocDraftToken);
+
+                    //delete draft after user stop typing for 1 sec
                     draftHandler.postDelayed(getThreadDeletingDraft("draftLoc"), deleteLocDraftToken, 1000);
                 }
             }
@@ -341,7 +353,10 @@ public class NewDiaryActivity extends AppCompatActivity {
                 boolean isDraftDeleted = getApplicationContext().deleteFile(fileName);
                 Log.d(TAG,fileName + " deleted : "+isDraftDeleted);
 
-                runOnUiThread(() -> draftStatus.setText("Draft saved"));
+                runOnUiThread(() -> {
+                    if(isDiaryTextAndImageEmpty()) draftStatus.setText(null);
+                    else draftStatus.setText("Draft saved");
+                });
             }
 
         };
@@ -557,6 +572,12 @@ public class NewDiaryActivity extends AppCompatActivity {
     
     @Override
     public void onBackPressed() {
+        //no need to prompt to keep/remove draft if no text/image entered in the new diary screen
+        if(isDiaryTextAndImageEmpty()) {
+            super.onBackPressed();
+            return;
+        }
+        
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Do you want to keep the draft?");
         builder.setPositiveButton("Keep", (dialog, which) -> NewDiaryActivity.super.onBackPressed());
@@ -904,5 +925,31 @@ public class NewDiaryActivity extends AppCompatActivity {
             }
         });
 
+    }
+    
+    private boolean isDiaryTextAndImageEmpty(){
+        boolean isImgViewHoldDrawable = diaryImage.getDrawable() != null;
+        Log.d(TAG, "diaryImage hold Drawable? : " + isImgViewHoldDrawable);
+
+        if(isImgViewHoldDrawable) return false;
+
+        boolean isDiaryTitleEmpty = diaryTitle.getText().toString().isEmpty();
+        boolean isDiaryNoteEmpty = diaryNote.getText().toString().isEmpty();
+        boolean isDiaryLocEmpty = diaryLoc.getText().toString().isEmpty();
+        Log.d(TAG, "diaryTitle empty?: " + isDiaryTitleEmpty);
+        Log.d(TAG, "diaryNote empty?: " + isDiaryNoteEmpty);
+        Log.d(TAG, "diaryLoc empty?: " + isDiaryLocEmpty);
+
+        //isImgViewHoldDrawable = false, check whether diaryTitle, diaryNote, diaryLoc are empty
+        return isDiaryTitleEmpty && isDiaryNoteEmpty && isDiaryLocEmpty;
+    }
+    
+    /*
+    Use to reset timer for respective operation (saving/deleting draft) and
+    cancel not related operation (if in process of saving draft, cancel delete operation, vice versa)
+     */
+    private void removeRunnable(String saveDraftToken, String deleteDraftToken){
+        draftHandler.removeCallbacksAndMessages(saveDraftToken);
+        draftHandler.removeCallbacksAndMessages(deleteDraftToken);
     }
 }
