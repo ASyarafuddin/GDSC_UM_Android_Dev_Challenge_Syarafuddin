@@ -6,7 +6,20 @@ Setup
 - Android Studio Bumblebee 2021.1.1
 
 Dependency
-- Refer to GDSC_UM_Android_Dev_Challenge_Syarafuddin/app/build.gradle
+- Refer to app/build.gradle
+
+### A bit guide
+1. Login using Facebook
+- Utilized Firebase authentication service, refer [here](https://firebase.google.com/docs/auth/android/facebook-login)
+- Refer code implementation at app/src/main/java/com/example/helloworld/LoginActivity.java
+
+2. Login using Twitter
+- Utilize Firebase authentication service, refer [here](https://firebase.google.com/docs/auth/android/twitter-login)
+- Refer code implementation at app/src/main/java/com/example/helloworld/LoginActivity.java
+
+3. Save diary draft
+- Related concept: Internal storage in Android, multithreading in Android (I refer to this [article](https://medium.com/@ali.muzaffar/handlerthreads-and-why-you-should-be-using-them-in-your-android-apps-dc8bf1540341)) 
+- Refer code implementation at app/src/main/java/com/example/helloworld/NewDiaryActivity.java
 
 ### Update after submission
 
